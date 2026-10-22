@@ -2,16 +2,15 @@
 
 選んだ1人だけをくっきり残し、背景と他の人物を玉ボケでぼかした動画を書き出す iOS 17+ アプリ。
 
-## ビルド（Mac）
+## ビルドと配布（GitHub Actions）
 
-```sh
-brew install xcodegen
-xcodegen generate          # project.yml から FocusBlur.xcodeproj と Info.plist を生成
-open FocusBlur.xcodeproj   # Signing の Team を設定して実機で実行
-xcodebuild test -scheme FocusBlur -destination 'platform=iOS Simulator,name=iPhone 15'
-```
+Mac は不要。`.github/workflows/ios.yml` がクラウドの Mac で XcodeGen → ユニットテストを実行する（main への push ごと）。
 
-Vision の人物インスタンスマスクは実機での確認を推奨。
+TestFlight へ配布するときは、GitHub の Actions タブ →「iOS」→「Run workflow」で **upload** をオンにして実行する。
+必要な Secrets：`APPLE_TEAM_ID` / `ASC_KEY_ID` / `ASC_ISSUER_ID` / `ASC_KEY_P8`（.p8 の中身）。
+App Store Connect に Bundle ID `com.sammy.focusblur` のアプリを作っておくこと。
+
+アイコンは `python scripts/make-icon.py` で作り直せる。
 
 ## 構成
 
