@@ -40,6 +40,8 @@ struct AdjustView: View {
                 Slider(value: $model.strength, in: 0...1)
             }
 
+            StickerPicker(sticker: $model.sticker)
+
             Button {
                 model.path.append(.export)
             } label: {
@@ -56,12 +58,16 @@ struct AdjustView: View {
         .onChange(of: model.strength) {
             scheduleRender(debounce: true)
         }
+        .onChange(of: model.sticker) {
+            scheduleRender(debounce: false)
+        }
     }
 
     private func prepare() async {
         guard renderer == nil, let frame = model.source?.firstFrame, let faceRect = model.faceRect else { return }
+        let faces = model.faces
         let created = await Task.detached(priority: .userInitiated) {
-            PreviewRenderer(firstFrame: frame, faceRect: faceRect)
+            PreviewRenderer(firstFrame: frame, faceRect: faceRect, faces: faces)
         }.value
         renderer = created
         hasMask = created.hasMask
@@ -72,14 +78,84 @@ struct AdjustView: View {
     private func scheduleRender(debounce: Bool) {
         renderTask?.cancel()
         let strength = model.strength
+        let sticker = model.sticker
         renderTask = Task {
             if debounce {
                 try? await Task.sleep(for: Constants.previewDebounce)
             }
             guard !Task.isCancelled, let renderer else { return }
-            let image = await renderer.render(strength: strength)
+            let image = await renderer.render(strength: strength, sticker: sticker)
             guard !Task.isCancelled else { return }
             preview = image
         }
+    }
+}
+
+/// 顔に貼る絵文字と、貼る相手を選ぶ
+private struct StickerPicker: View {
+    @Binding var sticker: StickerSettings
+    @State private var customEmoji = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("顔に絵文字")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    choice(nil) {
+                        Image(systemName: "nosign")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(StickerSettings.presets, id: \.self) { emoji in
+                        choice(emoji) { Text(emoji).font(.title2) }
+                    }
+                    // プリセット以外は絵文字キーボードで入力（最後の1文字を使う）
+                    TextField("他", text: $customEmoji)
+                        .multilineTextAlignment(.center)
+                        .font(.title2)
+                        .frame(width: 44, height: 44)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.12)))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.accentColor, lineWidth: isCustomSelected ? 2 : 0)
+                        }
+                        .onChange(of: customEmoji) { _, text in
+                            guard let last = text.last else { return }
+                            let emoji = String(last)
+                            if customEmoji != emoji { customEmoji = emoji }
+                            sticker.emoji = emoji
+                        }
+                }
+                .padding(2)
+            }
+            if sticker.emoji != nil {
+                Picker("貼る相手", selection: $sticker.target) {
+                    ForEach(StickerSettings.Target.allCases) { target in
+                        Text(target.label).tag(target)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+        }
+    }
+
+    private var isCustomSelected: Bool {
+        guard let emoji = sticker.emoji else { return false }
+        return !StickerSettings.presets.contains(emoji) && emoji == customEmoji
+    }
+
+    private func choice<Label: View>(_ emoji: String?, @ViewBuilder label: () -> Label) -> some View {
+        Button {
+            sticker.emoji = emoji
+        } label: {
+            label()
+                .frame(width: 44, height: 44)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.12)))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.accentColor, lineWidth: sticker.emoji == emoji ? 2 : 0)
+                }
+        }
+        .buttonStyle(.plain)
     }
 }

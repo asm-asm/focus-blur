@@ -56,6 +56,19 @@ enum Constants {
     /// ボケはこの長辺まで縮小してから計算し、元の解像度に戻す（4Kでの速度対策。ぼけた画像なので劣化は目立たない）
     static let bokehWorkingLongSide: CGFloat = 1920
 
+    // MARK: 顔の絵文字
+
+    /// 絵文字の一辺 = 顔矩形の長い辺 × この値（Vision の顔矩形は額や顎が少し欠けるので大きめに）
+    static let stickerScale: CGFloat = 1.6
+    /// 絵文字を描く元画像の一辺（px）
+    static let stickerImageSize: CGFloat = 512
+    /// 前フレームの顔と同じ顔とみなす最小IoU
+    static let stickerMatchMinIoU: CGFloat = 0.2
+    /// 位置の平滑化：今回の検出位置の重み
+    static let stickerSmoothing: CGFloat = 0.6
+    /// 顔が検出されなくても絵文字を残すフレーム数
+    static let stickerHoldFrames = 6
+
     // MARK: 書き出し
 
     /// 元動画のビットレートが取れないときの目安（1画素・1フレームあたりのビット数）

@@ -45,6 +45,7 @@ struct SubjectSelectView: View {
             Button {
                 guard let selectedIndex else { return }
                 model.faceRect = faces[selectedIndex]
+                model.faces = faces
                 model.path.append(.adjust)
             } label: {
                 Text("次へ").frame(maxWidth: .infinity)

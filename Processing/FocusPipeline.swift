@@ -27,7 +27,7 @@ final class AnalysisFrameRenderer {
     }
 }
 
-/// 1フレームごとの処理：追跡 → 対象マスク → 整形・平滑化 → 玉ボケ → 合成。
+/// 1フレームごとの処理：追跡 → 対象マスク → 整形・平滑化 → 玉ボケ → 合成 → 顔の絵文字。
 /// 見失ったときの猶予・全体ぼかし・復帰時のフェードインもここで扱う。
 /// 書き出しキューからのみ使う（スレッドセーフではない）
 final class FocusPipeline {
@@ -36,7 +36,12 @@ final class FocusPipeline {
     private let analysis: AnalysisFrameRenderer
     private let maskProvider = PersonMaskProvider()
     private let renderer: BokehRenderer
+    private let stickerTarget: StickerSettings.Target
+    private let stickerRenderer: FaceStickerRenderer?
+    private let stickerTracker = FaceStickerTracker()
     private var tracker: SubjectTracker?
+    /// 最後に追跡できていた対象の顔
+    private var lastTargetFace: CGRect?
 
     /// 対象（の顔またはマスク）が見つからなくなった時刻
     private var missingSince: Double?
@@ -49,34 +54,74 @@ final class FocusPipeline {
     ///   - bufferSize: 回転前のピクセルバッファのサイズ
     ///   - orientation: 映像トラックの向き
     ///   - faceRect: 最初のフレーム（表示の向き）で選んだ顔の Vision 正規化座標
-    init(bufferSize: CGSize, orientation: CGImagePropertyOrientation, faceRect: CGRect, strength: CGFloat) {
+    init(bufferSize: CGSize, orientation: CGImagePropertyOrientation, faceRect: CGRect, strength: CGFloat,
+         sticker: StickerSettings) {
         self.orientation = orientation
         self.initialFaceRect = faceRect
         analysis = AnalysisFrameRenderer(sourceSize: bufferSize, orientation: orientation)
         renderer = BokehRenderer(strength: strength)
+        stickerTarget = sticker.target
+        stickerRenderer = sticker.emoji.flatMap { FaceStickerRenderer(emoji: $0) }
     }
 
     /// - Returns: バッファの向き・解像度のままの出力画像
     func process(_ pixelBuffer: CVPixelBuffer, time: Double) -> CIImage {
         let source = CIImage(cvPixelBuffer: pixelBuffer, options: [.colorSpace: RenderContext.videoColorSpace])
-        let mask = analysisMask(for: source, time: time)
+        guard let frame = analysis.render(source) else {
+            let held = maskProvider.heldMask.map { PersonMaskProvider.fitted($0, to: source.extent, from: orientation) }
+            return renderer.render(source: source, mask: held)
+        }
+
+        let targetFace = trackTarget(in: frame)
+        let mask = analysisMask(in: frame, targetFace: targetFace, time: time)
             .map { PersonMaskProvider.fitted($0, to: source.extent, from: orientation) }
-        return renderer.render(source: source, mask: mask)
+        let output = renderer.render(source: source, mask: mask)
+
+        guard let stickerRenderer else { return output }
+        return stickerRenderer.composite(faces: stickerFaces(in: frame, targetFace: targetFace),
+                                         over: output, orientation: orientation)
+    }
+
+    /// 対象の顔の位置（Vision 正規化座標）。見失っていれば nil
+    private func trackTarget(in frame: CVPixelBuffer) -> CGRect? {
+        let face: CGRect?
+        if let tracker {
+            face = tracker.update(frame)
+        } else {
+            tracker = SubjectTracker(firstFrame: frame, faceRect: initialFaceRect)
+            face = initialFaceRect
+        }
+        if let face { lastTargetFace = face }
+        return face
+    }
+
+    /// 絵文字を貼る顔（Vision 正規化座標）
+    private func stickerFaces(in frame: CVPixelBuffer, targetFace: CGRect?) -> [CGRect] {
+        // 見失いの猶予中は直前の位置を対象の顔として扱う（一瞬で絵文字が外れて顔が出ないように）
+        let target = targetFace ?? (isFullyBlurred ? nil : lastTargetFace)
+        switch stickerTarget {
+        case .subject:
+            return target.map { [$0] } ?? []
+        case .everyone:
+            return stickerTracker.faces(in: frame)
+        case .others:
+            let faces = stickerTracker.faces(in: frame)
+            guard let target,
+                  let index = faces.indices.max(by: {
+                      CoordinateConverter.iou(faces[$0], target) < CoordinateConverter.iou(faces[$1], target)
+                  }),
+                  CoordinateConverter.iou(faces[index], target) >= Constants.redetectMinIoU else {
+                return faces
+            }
+            var others = faces
+            others.remove(at: index)
+            return others
+        }
     }
 
     /// このフレームで使うマスク（解析解像度・表示の向き）。nil ならフレーム全体をぼかす
-    private func analysisMask(for source: CIImage, time: Double) -> CIImage? {
-        guard let frame = analysis.render(source) else { return maskProvider.heldMask }
-
-        let faceRect: CGRect?
-        if let tracker {
-            faceRect = tracker.update(frame)
-        } else {
-            tracker = SubjectTracker(firstFrame: frame, faceRect: initialFaceRect)
-            faceRect = initialFaceRect
-        }
-
-        if let faceRect, let raw = maskProvider.targetMask(in: frame, faceRect: faceRect) {
+    private func analysisMask(in frame: CVPixelBuffer, targetFace: CGRect?, time: Double) -> CIImage? {
+        if let targetFace, let raw = maskProvider.targetMask(in: frame, faceRect: targetFace) {
             if isFullyBlurred {
                 isFullyBlurred = false
                 fadeInStart = time

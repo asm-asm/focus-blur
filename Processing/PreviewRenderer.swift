@@ -5,16 +5,21 @@ import CoreImage
 actor PreviewRenderer {
     private let source: CIImage
     private let mask: CIImage?
+    private let targetFace: CGRect
+    private let faces: [CGRect]
     nonisolated let hasMask: Bool
 
     /// - Parameters:
     ///   - firstFrame: 表示の向きの最初のフレーム
     ///   - faceRect: 選んだ顔（Vision 正規化座標）
-    init(firstFrame: CGImage, faceRect: CGRect) {
+    ///   - faces: 最初のフレームで検出したすべての顔
+    init(firstFrame: CGImage, faceRect: CGRect, faces: [CGRect]) {
         let full = CIImage(cgImage: firstFrame)
         let scale = min(1, Constants.previewLongSide / max(full.extent.width, full.extent.height))
         let image = full.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         source = image
+        targetFace = faceRect
+        self.faces = faces
 
         // 書き出しと同じ解析経路（長辺 analysisLongSide に縮小）でマスクを作る
         let analysis = AnalysisFrameRenderer(sourceSize: image.extent.size, orientation: .up)
@@ -27,8 +32,19 @@ actor PreviewRenderer {
         hasMask = mask != nil
     }
 
-    func render(strength: Double) -> CGImage? {
-        let output = BokehRenderer(strength: CGFloat(strength)).render(source: source, mask: mask)
+    func render(strength: Double, sticker: StickerSettings) -> CGImage? {
+        var output = BokehRenderer(strength: CGFloat(strength)).render(source: source, mask: mask)
+        if let emoji = sticker.emoji, let stickerRenderer = FaceStickerRenderer(emoji: emoji) {
+            output = stickerRenderer.composite(faces: stickerFaces(for: sticker.target), over: output, orientation: .up)
+        }
         return RenderContext.shared.createCGImage(output, from: source.extent)
+    }
+
+    private func stickerFaces(for target: StickerSettings.Target) -> [CGRect] {
+        switch target {
+        case .subject: return [targetFace]
+        case .others: return faces.filter { $0 != targetFace }
+        case .everyone: return faces
+        }
     }
 }
