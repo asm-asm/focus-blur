@@ -1,0 +1,12 @@
+# XcodeGen の生成物
+*.xcodeproj
+App/Info.plist
+
+# Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
+build/
+
+# App Store Connect API キーはコミットしない
+*.p8
