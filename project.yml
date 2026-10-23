@@ -34,7 +34,9 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        NSPhotoLibraryAddUsageDescription: 編集した動画を写真ライブラリに保存するために使用します
+        NSPhotoLibraryAddUsageDescription: 撮影した動画と編集した動画を写真ライブラリに保存するために使用します
+        NSCameraUsageDescription: 動画を撮影するためにカメラを使用します
+        NSMicrophoneUsageDescription: 撮影する動画の音声を録音するためにマイクを使用します
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:
