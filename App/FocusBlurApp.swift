@@ -21,6 +21,7 @@ struct RootView: View {
             HomeView()
                 .navigationDestination(for: AppModel.Route.self) { route in
                     switch route {
+                    case .trim: TrimView()
                     case .subjectSelect: SubjectSelectView()
                     case .adjust: AdjustView()
                     case .export: ExportView()

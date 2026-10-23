@@ -5,10 +5,12 @@ import Foundation
 enum Constants {
     // MARK: 入力
 
-    /// 受け付ける動画の最大長（秒）
+    /// 書き出せる区間の最大長（秒）。長い動画はトリム画面でこの長さ以内の区間を選ぶ
     static let maxVideoDuration: Double = 60
-    /// 「1:00」表示の動画が 60.03 秒などになるのを許容する誤差（秒）
-    static let durationTolerance: Double = 0.1
+    /// トリムで選べる区間の最小長（秒）
+    static let minClipDuration: Double = 1
+    /// トリム画面のサムネイルの枚数
+    static let trimThumbnailCount = 10
 
     // MARK: 追跡
 
@@ -62,12 +64,20 @@ enum Constants {
     static let stickerScale: CGFloat = 1.6
     /// 絵文字を描く元画像の一辺（px）
     static let stickerImageSize: CGFloat = 512
-    /// 前フレームの顔と同じ顔とみなす最小IoU
-    static let stickerMatchMinIoU: CGFloat = 0.2
-    /// 位置の平滑化：今回の検出位置の重み
-    static let stickerSmoothing: CGFloat = 0.6
-    /// 顔が検出されなくても絵文字を残すフレーム数
-    static let stickerHoldFrames = 6
+    /// 前フレームの顔と同じ顔とみなす中心の距離（顔の大きさに対する比。CoordinateConverter.centerDistance）
+    static let stickerMatchMaxDistance: CGFloat = 1.0
+    /// 位置の平滑化：今回の検出位置の重み（大きいほど遅れが少なく、小さいほどガタつきが少ない）
+    static let stickerSmoothing: CGFloat = 0.85
+    /// 移動速度の平滑化：今回の測定値の重み
+    static let stickerVelocitySmoothing: CGFloat = 0.5
+    /// 顔が検出されなくても絵文字を残す秒数（その間は動きの向きに沿って予測した位置に置く）
+    static let stickerHoldDuration: Double = 0.7
+    /// 見失い中の絵文字の拡大率
+    static let stickerMissingGrowth: CGFloat = 1.25
+    /// 顔検出用フレームの長辺（px）。小さい・遠い顔も拾えるようマスク用より高くする
+    static let stickerDetectionLongSide: CGFloat = 1920
+    /// 姿勢推定で使う関節点の最小 confidence
+    static let poseMinConfidence: Float = 0.3
 
     // MARK: 書き出し
 

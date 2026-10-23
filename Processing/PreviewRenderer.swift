@@ -12,14 +12,14 @@ actor PreviewRenderer {
     /// - Parameters:
     ///   - firstFrame: 表示の向きの最初のフレーム
     ///   - faceRect: 選んだ顔（Vision 正規化座標）
-    ///   - faces: 最初のフレームで検出したすべての顔
-    init(firstFrame: CGImage, faceRect: CGRect, faces: [CGRect]) {
+    init(firstFrame: CGImage, faceRect: CGRect) {
         let full = CIImage(cgImage: firstFrame)
         let scale = min(1, Constants.previewLongSide / max(full.extent.width, full.extent.height))
         let image = full.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         source = image
         targetFace = faceRect
-        self.faces = faces
+        // 書き出しと同じく、顔検出と体の姿勢から頭の位置を求める
+        faces = FaceStickerTracker.detect(in: firstFrame)
 
         // 書き出しと同じ解析経路（長辺 analysisLongSide に縮小）でマスクを作る
         let analysis = AnalysisFrameRenderer(sourceSize: image.extent.size, orientation: .up)
@@ -42,9 +42,23 @@ actor PreviewRenderer {
 
     private func stickerFaces(for target: StickerSettings.Target) -> [CGRect] {
         switch target {
-        case .subject: return [targetFace]
-        case .others: return faces.filter { $0 != targetFace }
-        case .everyone: return faces
+        case .subject:
+            return [targetFace]
+        case .others:
+            guard let target = targetIndex else { return faces }
+            return faces.indices.filter { $0 != target }.map { faces[$0] }
+        case .everyone:
+            return targetIndex == nil ? faces + [targetFace] : faces
         }
+    }
+
+    /// faces のうち、選んだ顔に当たるもの
+    private var targetIndex: Int? {
+        guard let best = faces.indices.min(by: {
+            CoordinateConverter.centerDistance(faces[$0], targetFace) < CoordinateConverter.centerDistance(faces[$1], targetFace)
+        }), CoordinateConverter.centerDistance(faces[best], targetFace) <= Constants.stickerMatchMaxDistance else {
+            return nil
+        }
+        return best
     }
 }

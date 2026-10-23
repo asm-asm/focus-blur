@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class AppModel {
     enum Route: Hashable {
+        case trim
         case subjectSelect
         case adjust
         case export
@@ -14,15 +15,13 @@ final class AppModel {
     var source: VideoSource?
     /// 対象人物の顔。最初のフレーム（表示の向き）での Vision 正規化座標
     var faceRect: CGRect?
-    /// 最初のフレームで検出したすべての顔（Vision 正規化座標）
-    var faces: [CGRect] = []
     var strength: Double = Constants.defaultStrength
     var sticker = StickerSettings()
 
     func start(with source: VideoSource) {
         discardSource()
         self.source = source
-        path = [.subjectSelect]
+        path = [.trim]
     }
 
     /// ホームに戻り、コピーした一時ファイルを消す
@@ -37,7 +36,6 @@ final class AppModel {
         }
         source = nil
         faceRect = nil
-        faces = []
         strength = Constants.defaultStrength
         sticker = StickerSettings()
     }

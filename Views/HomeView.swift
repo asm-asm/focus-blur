@@ -31,7 +31,7 @@ struct HomeView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(isLoading)
-            Text("60秒以内の動画を選べます")
+            Text("60秒を超える動画は、次の画面で使う区間を選べます")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

@@ -4,34 +4,55 @@ import XCTest
 
 final class FaceStickerTests: XCTestCase {
 
-    func testTrackerSmoothsMatchedFace() {
+    func testTrackerFollowsMovementWithLittleLag() {
         let tracker = FaceStickerTracker()
         let first = CGRect(x: 0.4, y: 0.4, width: 0.2, height: 0.2)
-        XCTAssertEqual(tracker.update(detections: [first]), [first])
+        XCTAssertEqual(tracker.update(detections: [first], time: 0).map(\.rect), [first])
 
         let moved = first.offsetBy(dx: 0.05, dy: 0)
-        let faces = tracker.update(detections: [moved])
+        let faces = tracker.update(detections: [moved], time: 1.0 / 30)
         XCTAssertEqual(faces.count, 1)
         // 新しい位置へ stickerSmoothing の割合だけ近づく
-        XCTAssertEqual(faces[0].minX, 0.4 + 0.05 * Constants.stickerSmoothing, accuracy: 1e-9)
+        XCTAssertEqual(faces[0].rect.minX, 0.4 + 0.05 * Constants.stickerSmoothing, accuracy: 1e-9)
     }
 
-    func testTrackerHoldsMissingFaceForAFewFrames() {
+    func testTrackerPredictsMotionWhileFaceIsMissing() {
         let tracker = FaceStickerTracker()
-        let face = CGRect(x: 0.1, y: 0.1, width: 0.2, height: 0.2)
-        _ = tracker.update(detections: [face])
-        for _ in 0..<Constants.stickerHoldFrames {
-            XCTAssertEqual(tracker.update(detections: []), [face])
-        }
-        XCTAssertEqual(tracker.update(detections: []), [])
+        let first = CGRect(x: 0.4, y: 0.4, width: 0.2, height: 0.2)
+        _ = tracker.update(detections: [first], time: 0)
+        let seen = tracker.update(detections: [first.offsetBy(dx: 0.02, dy: 0)], time: 0.1)[0].rect
+        let velocity = 0.2 * Constants.stickerVelocitySmoothing  // 測定 0.02 / 0.1秒 を平滑化
+
+        let missing = tracker.update(detections: [], time: 0.2)
+        XCTAssertEqual(missing.count, 1)
+        // 動いていた向きに進み、少し大きくなる
+        XCTAssertEqual(missing[0].rect.midX, seen.midX + velocity * 0.1, accuracy: 1e-9)
+        XCTAssertEqual(missing[0].rect.width, seen.width * Constants.stickerMissingGrowth, accuracy: 1e-9)
     }
 
-    func testTrackerAddsNewFaces() {
+    func testTrackerDropsFaceAfterHoldDuration() {
+        let tracker = FaceStickerTracker()
+        _ = tracker.update(detections: [CGRect(x: 0.1, y: 0.1, width: 0.2, height: 0.2)], time: 0)
+        XCTAssertEqual(tracker.update(detections: [], time: Constants.stickerHoldDuration - 0.01).count, 1)
+        XCTAssertEqual(tracker.update(detections: [], time: Constants.stickerHoldDuration + 0.01).count, 0)
+    }
+
+    func testTrackerKeepsIDsAndAddsNewFaces() {
         let tracker = FaceStickerTracker()
         let a = CGRect(x: 0.1, y: 0.1, width: 0.2, height: 0.2)
         let b = CGRect(x: 0.7, y: 0.7, width: 0.2, height: 0.2)
-        _ = tracker.update(detections: [a])
-        XCTAssertEqual(Set(tracker.update(detections: [a, b]).map(\.minX)), [a.minX, b.minX])
+        let firstID = tracker.update(detections: [a], time: 0)[0].id
+        let faces = tracker.update(detections: [b, a], time: 0.03)
+        XCTAssertEqual(faces.count, 2)
+        XCTAssertEqual(faces.first { $0.rect.minX < 0.5 }?.id, firstID)
+        XCTAssertNotEqual(faces.first { $0.rect.minX > 0.5 }?.id, firstID)
+    }
+
+    func testMergePrefersFaceOverHeadOfSamePerson() {
+        let face = CGRect(x: 0.4, y: 0.4, width: 0.1, height: 0.1)
+        let sameHead = CGRect(x: 0.41, y: 0.42, width: 0.12, height: 0.12)
+        let otherHead = CGRect(x: 0.8, y: 0.4, width: 0.1, height: 0.1)
+        XCTAssertEqual(FaceStickerTracker.merge(faces: [face], heads: [sameHead, otherHead]), [face, otherHead])
     }
 
     func testStickerLayerMatchesOutputExtent() throws {

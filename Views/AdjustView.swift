@@ -65,9 +65,8 @@ struct AdjustView: View {
 
     private func prepare() async {
         guard renderer == nil, let frame = model.source?.firstFrame, let faceRect = model.faceRect else { return }
-        let faces = model.faces
         let created = await Task.detached(priority: .userInitiated) {
-            PreviewRenderer(firstFrame: frame, faceRect: faceRect, faces: faces)
+            PreviewRenderer(firstFrame: frame, faceRect: faceRect)
         }.value
         renderer = created
         hasMask = created.hasMask

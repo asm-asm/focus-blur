@@ -1,7 +1,6 @@
 import SwiftUI
 
 enum AppError: LocalizedError {
-    case tooLong
     case loadFailed
     case noFace
     case exportFailed
@@ -10,7 +9,6 @@ enum AppError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .tooLong: return "60秒以内の動画を選んでください。"
         case .loadFailed: return "動画を読み込めませんでした。"
         case .noFace: return "顔が見つかりませんでした。"
         case .exportFailed: return "動画の書き出しに失敗しました。"

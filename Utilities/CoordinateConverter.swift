@@ -85,6 +85,13 @@ enum CoordinateConverter {
 
     // MARK: 矩形
 
+    /// 中心どうしの距離を、2つの矩形のうち大きい辺の長さで割ったもの（同じ顔かどうかの目安）
+    static func centerDistance(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        let size = max(a.width, a.height, b.width, b.height)
+        guard size > 0 else { return .infinity }
+        return hypot(a.midX - b.midX, a.midY - b.midY) / size
+    }
+
     static func iou(_ a: CGRect, _ b: CGRect) -> CGFloat {
         let intersection = a.intersection(b)
         guard !intersection.isNull else { return 0 }

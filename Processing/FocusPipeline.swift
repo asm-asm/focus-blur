@@ -7,10 +7,10 @@ final class AnalysisFrameRenderer {
     let size: CGSize
     private let pool: CVPixelBufferPool?
 
-    init(sourceSize: CGSize, orientation: CGImagePropertyOrientation) {
+    init(sourceSize: CGSize, orientation: CGImagePropertyOrientation, longSide: CGFloat = Constants.analysisLongSide) {
         self.orientation = orientation
         let upright = CoordinateConverter.orientedSize(sourceSize, orientation)
-        let scale = min(1, Constants.analysisLongSide / max(upright.width, upright.height))
+        let scale = min(1, longSide / max(upright.width, upright.height))
         size = CGSize(width: (upright.width * scale).rounded(), height: (upright.height * scale).rounded())
         pool = PixelBufferFactory.makePool(width: Int(size.width), height: Int(size.height),
                                            format: kCVPixelFormatType_32BGRA)
@@ -39,6 +39,10 @@ final class FocusPipeline {
     private let stickerTarget: StickerSettings.Target
     private let stickerRenderer: FaceStickerRenderer?
     private let stickerTracker = FaceStickerTracker()
+    /// 絵文字用の顔検出フレーム（小さい顔も拾えるよう高めの解像度）。絵文字なしなら nil
+    private let stickerAnalysis: AnalysisFrameRenderer?
+    /// 絵文字の追跡で、対象人物とみなしている頭の ID
+    private var targetStickerID: Int?
     private var tracker: SubjectTracker?
     /// 最後に追跡できていた対象の顔
     private var lastTargetFace: CGRect?
@@ -62,6 +66,9 @@ final class FocusPipeline {
         renderer = BokehRenderer(strength: strength)
         stickerTarget = sticker.target
         stickerRenderer = sticker.emoji.flatMap { FaceStickerRenderer(emoji: $0) }
+        stickerAnalysis = stickerRenderer == nil ? nil
+            : AnalysisFrameRenderer(sourceSize: bufferSize, orientation: orientation,
+                                    longSide: Constants.stickerDetectionLongSide)
     }
 
     /// - Returns: バッファの向き・解像度のままの出力画像
@@ -77,9 +84,9 @@ final class FocusPipeline {
             .map { PersonMaskProvider.fitted($0, to: source.extent, from: orientation) }
         let output = renderer.render(source: source, mask: mask)
 
-        guard let stickerRenderer else { return output }
-        return stickerRenderer.composite(faces: stickerFaces(in: frame, targetFace: targetFace),
-                                         over: output, orientation: orientation)
+        guard let stickerRenderer, let faceFrame = stickerAnalysis?.render(source) else { return output }
+        let faces = stickerFaces(faceFrame: faceFrame, poseFrame: frame, targetFace: targetFace, time: time)
+        return stickerRenderer.composite(faces: faces, over: output, orientation: orientation)
     }
 
     /// 対象の顔の位置（Vision 正規化座標）。見失っていれば nil
@@ -96,26 +103,29 @@ final class FocusPipeline {
     }
 
     /// 絵文字を貼る顔（Vision 正規化座標）
-    private func stickerFaces(in frame: CVPixelBuffer, targetFace: CGRect?) -> [CGRect] {
+    private func stickerFaces(faceFrame: CVPixelBuffer, poseFrame: CVPixelBuffer, targetFace: CGRect?,
+                              time: Double) -> [CGRect] {
+        let tracked = stickerTracker.faces(faceFrame: faceFrame, poseFrame: poseFrame, time: time)
+
         // 見失いの猶予中は直前の位置を対象の顔として扱う（一瞬で絵文字が外れて顔が出ないように）
         let target = targetFace ?? (isFullyBlurred ? nil : lastTargetFace)
+        if let target, let best = tracked.min(by: {
+            CoordinateConverter.centerDistance($0.rect, target) < CoordinateConverter.centerDistance($1.rect, target)
+        }), CoordinateConverter.centerDistance(best.rect, target) <= Constants.stickerMatchMaxDistance {
+            targetStickerID = best.id
+        }
+        // 対象の顔追跡が外れても、頭の追跡が続いている間は同じ人として扱う
+        let targetTrack = tracked.first { $0.id == targetStickerID }
+        if targetTrack == nil { targetStickerID = nil }
+
         switch stickerTarget {
         case .subject:
+            if let targetTrack { return [targetTrack.rect] }
             return target.map { [$0] } ?? []
-        case .everyone:
-            return stickerTracker.faces(in: frame)
         case .others:
-            let faces = stickerTracker.faces(in: frame)
-            guard let target,
-                  let index = faces.indices.max(by: {
-                      CoordinateConverter.iou(faces[$0], target) < CoordinateConverter.iou(faces[$1], target)
-                  }),
-                  CoordinateConverter.iou(faces[index], target) >= Constants.redetectMinIoU else {
-                return faces
-            }
-            var others = faces
-            others.remove(at: index)
-            return others
+            return tracked.filter { $0.id != targetStickerID }.map(\.rect)
+        case .everyone:
+            return tracked.map(\.rect)
         }
     }
 

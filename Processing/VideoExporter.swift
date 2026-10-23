@@ -23,7 +23,7 @@ final class VideoExporter: @unchecked Sendable {
         self.faceRect = faceRect
         self.strength = strength
         self.sticker = sticker
-        estimatedFrameCount = max(1, Int((source.duration * Double(source.nominalFrameRate)).rounded()))
+        estimatedFrameCount = max(1, Int((source.clipDuration * Double(source.nominalFrameRate)).rounded()))
     }
 
     private var isCancelled: Bool { lock.withLock { cancelled } }
@@ -64,6 +64,8 @@ final class VideoExporter: @unchecked Sendable {
         // MARK: 読み出し
 
         let reader = try AVAssetReader(asset: asset)
+        // 選んだ区間だけを読み出す
+        reader.timeRange = source.timeRange
         let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
@@ -127,7 +129,9 @@ final class VideoExporter: @unchecked Sendable {
             writer.cancelWriting()
             throw AppError.exportFailed
         }
-        writer.startSession(atSourceTime: .zero)
+        // セッションの開始時刻が書き出した動画の 0 秒になる。区間外の音声サンプルは writer が切り詰める
+        writer.startSession(atSourceTime: source.timeRange.start)
+        let sessionEnd = source.timeRange.end
 
         let pipeline = FocusPipeline(bufferSize: source.naturalSize, orientation: source.orientation,
                                      faceRect: faceRect, strength: CGFloat(strength), sticker: sticker)
@@ -201,6 +205,7 @@ final class VideoExporter: @unchecked Sendable {
                     continuation.resume(throwing: AppError.exportFailed)
                     return
                 }
+                writer.endSession(atSourceTime: sessionEnd)
                 writer.finishWriting {
                     if writer.status == .completed {
                         DispatchQueue.main.async { progress(total) }
