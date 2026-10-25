@@ -82,12 +82,12 @@ struct ExportView: View {
     }
 
     private func run() async {
-        guard let source = model.source, let faceRect = model.faceRect else {
+        guard let source = model.source, !model.subjects.isEmpty else {
             dismiss()
             return
         }
-        let exporter = VideoExporter(source: source, faceRect: faceRect, strength: model.strength,
-                                     sticker: model.sticker)
+        let exporter = VideoExporter(source: source, subjects: model.subjects, strength: model.strength,
+                                     style: model.style, sticker: model.sticker)
         self.exporter = exporter
         total = exporter.estimatedFrameCount
 

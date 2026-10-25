@@ -67,12 +67,17 @@ struct VideoSource {
         let endTime = CMTime(seconds: end, preferredTimescale: 600)
         var trimmed = self
         trimmed.timeRange = CMTimeRange(start: startTime, end: endTime)
+        trimmed.firstFrame = try await frame(at: start)
+        return trimmed
+    }
+
+    /// 指定した時刻（秒）のフレーム（表示の向き）
+    func frame(at seconds: Double) async throws -> CGImage {
         do {
-            trimmed.firstFrame = try await Self.frame(of: AVURLAsset(url: url), at: startTime)
+            return try await Self.frame(of: AVURLAsset(url: url), at: CMTime(seconds: seconds, preferredTimescale: 600))
         } catch {
             throw AppError.loadFailed
         }
-        return trimmed
     }
 
     private static func frame(of asset: AVAsset, at time: CMTime) async throws -> CGImage {

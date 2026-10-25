@@ -13,9 +13,10 @@ final class AppModel {
 
     var path: [Route] = []
     var source: VideoSource?
-    /// 対象人物の顔。最初のフレーム（表示の向き）での Vision 正規化座標
-    var faceRect: CGRect?
+    /// ピントを合わせる人の切り替え点（時刻順）
+    var subjects: [SubjectKey] = []
     var strength: Double = Constants.defaultStrength
+    var style = BlurStyle()
     var sticker = StickerSettings()
 
     func start(with source: VideoSource) {
@@ -35,8 +36,9 @@ final class AppModel {
             try? FileManager.default.removeItem(at: url)
         }
         source = nil
-        faceRect = nil
+        subjects = []
         strength = Constants.defaultStrength
+        style = BlurStyle()
         sticker = StickerSettings()
     }
 }

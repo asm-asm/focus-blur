@@ -110,7 +110,7 @@ struct TrimView: View {
         defer { isConfirming = false }
         do {
             model.source = try await source.trimmed(start: start, end: end)
-            model.faceRect = nil
+            model.subjects = []
             player?.pause()
             model.path.append(.subjectSelect)
         } catch {

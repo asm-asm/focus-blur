@@ -10,7 +10,7 @@ actor PreviewRenderer {
     nonisolated let hasMask: Bool
 
     /// - Parameters:
-    ///   - firstFrame: 表示の向きの最初のフレーム
+    ///   - firstFrame: 表示の向きのフレーム（最初の切り替え点）
     ///   - faceRect: 選んだ顔（Vision 正規化座標）
     init(firstFrame: CGImage, faceRect: CGRect) {
         let full = CIImage(cgImage: firstFrame)
@@ -32,8 +32,8 @@ actor PreviewRenderer {
         hasMask = mask != nil
     }
 
-    func render(strength: Double, sticker: StickerSettings) -> CGImage? {
-        var output = BokehRenderer(strength: CGFloat(strength)).render(source: source, mask: mask)
+    func render(strength: Double, style: BlurStyle, sticker: StickerSettings) -> CGImage? {
+        var output = BokehRenderer(strength: CGFloat(strength), style: style).render(source: source, mask: mask)
         if let emoji = sticker.emoji, let stickerRenderer = FaceStickerRenderer(emoji: emoji) {
             output = stickerRenderer.composite(faces: stickerFaces(for: sticker.target), over: output, orientation: .up)
         }

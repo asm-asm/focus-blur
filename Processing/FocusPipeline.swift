@@ -32,7 +32,9 @@ final class AnalysisFrameRenderer {
 /// 書き出しキューからのみ使う（スレッドセーフではない）
 final class FocusPipeline {
     private let orientation: CGImagePropertyOrientation
-    private let initialFaceRect: CGRect
+    /// ピントを合わせる人の切り替え点（時刻順）
+    private let subjects: [SubjectKey]
+    private var nextSubjectIndex = 0
     private let analysis: AnalysisFrameRenderer
     private let maskProvider = PersonMaskProvider()
     private let renderer: BokehRenderer
@@ -57,13 +59,13 @@ final class FocusPipeline {
     /// - Parameters:
     ///   - bufferSize: 回転前のピクセルバッファのサイズ
     ///   - orientation: 映像トラックの向き
-    ///   - faceRect: 最初のフレーム（表示の向き）で選んだ顔の Vision 正規化座標
-    init(bufferSize: CGSize, orientation: CGImagePropertyOrientation, faceRect: CGRect, strength: CGFloat,
-         sticker: StickerSettings) {
+    ///   - subjects: ピントを合わせる人の切り替え点。最初の点より前はフレーム全体をぼかす
+    init(bufferSize: CGSize, orientation: CGImagePropertyOrientation, subjects: [SubjectKey], strength: CGFloat,
+         style: BlurStyle, sticker: StickerSettings) {
         self.orientation = orientation
-        self.initialFaceRect = faceRect
+        self.subjects = subjects.sorted { $0.time < $1.time }
         analysis = AnalysisFrameRenderer(sourceSize: bufferSize, orientation: orientation)
-        renderer = BokehRenderer(strength: strength)
+        renderer = BokehRenderer(strength: strength, style: style)
         stickerTarget = sticker.target
         stickerRenderer = sticker.emoji.flatMap { FaceStickerRenderer(emoji: $0) }
         stickerAnalysis = stickerRenderer == nil ? nil
@@ -76,28 +78,42 @@ final class FocusPipeline {
         let source = CIImage(cvPixelBuffer: pixelBuffer, options: [.colorSpace: RenderContext.videoColorSpace])
         guard let frame = analysis.render(source) else {
             let held = maskProvider.heldMask.map { PersonMaskProvider.fitted($0, to: source.extent, from: orientation) }
-            return renderer.render(source: source, mask: held)
+            return renderer.render(source: source, mask: held, time: time)
         }
 
-        let targetFace = trackTarget(in: frame)
+        let targetFace = trackTarget(in: frame, time: time)
         let mask = analysisMask(in: frame, targetFace: targetFace, time: time)
             .map { PersonMaskProvider.fitted($0, to: source.extent, from: orientation) }
-        let output = renderer.render(source: source, mask: mask)
+        let output = renderer.render(source: source, mask: mask, time: time)
 
         guard let stickerRenderer, let faceFrame = stickerAnalysis?.render(source) else { return output }
         let faces = stickerFaces(faceFrame: faceFrame, poseFrame: frame, targetFace: targetFace, time: time)
         return stickerRenderer.composite(faces: faces, over: output, orientation: orientation)
     }
 
-    /// 対象の顔の位置（Vision 正規化座標）。見失っていれば nil
-    private func trackTarget(in frame: CVPixelBuffer) -> CGRect? {
-        let face: CGRect?
-        if let tracker {
-            face = tracker.update(frame)
-        } else {
-            tracker = SubjectTracker(firstFrame: frame, faceRect: initialFaceRect)
-            face = initialFaceRect
+    /// 対象の顔の位置（Vision 正規化座標）。見失っている・まだ対象がいなければ nil
+    private func trackTarget(in frame: CVPixelBuffer, time: Double) -> CGRect? {
+        // 切り替え点に来たら、その人で追跡をやり直す
+        var reached: SubjectKey?
+        while nextSubjectIndex < subjects.count,
+              time + Constants.subjectSwitchTolerance >= subjects[nextSubjectIndex].time {
+            reached = subjects[nextSubjectIndex]
+            nextSubjectIndex += 1
         }
+        if let reached {
+            tracker = SubjectTracker(firstFrame: frame, faceRect: reached.faceRect)
+            lastTargetFace = reached.faceRect
+            targetStickerID = nil
+            missingSince = nil
+            return reached.faceRect
+        }
+
+        guard let tracker else {
+            // 最初の切り替え点より前：対象がいないのでフレーム全体をぼかす
+            isFullyBlurred = true
+            return nil
+        }
+        let face = tracker.update(frame)
         if let face { lastTargetFace = face }
         return face
     }

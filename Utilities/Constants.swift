@@ -58,6 +58,24 @@ enum Constants {
     /// ボケはこの長辺まで縮小してから計算し、元の解像度に戻す（4Kでの速度対策。ぼけた画像なので劣化は目立たない）
     static let bokehWorkingLongSide: CGFloat = 1920
 
+    // MARK: プリセット・グラデーション
+
+    /// フィルムの粒子の強さ（0〜1）
+    static let filmGrainAmount: CGFloat = 0.18
+    /// 人の近くのボケ半径（通常の半径に対する比）
+    static let gradientNearRadiusRatio: CGFloat = 0.3
+    /// 弱いボケから強いボケに変わる広さ（長辺に対する比）
+    static let gradientFalloff: CGFloat = 0.15
+    /// 人の近さを強調する倍率（大きいほど弱いボケの範囲が広がる）
+    static let gradientGain: CGFloat = 2.5
+    /// 近さの計算に使う縮小画像の長辺（px）
+    static let gradientWorkingLongSide: CGFloat = 256
+
+    // MARK: 対象の切り替え
+
+    /// 切り替え点の時刻とフレームの時刻のずれの許容（秒）
+    static let subjectSwitchTolerance: Double = 0.02
+
     // MARK: 顔の絵文字
 
     /// 絵文字の一辺 = 顔矩形の長い辺 × この値（Vision の顔矩形は額や顎が少し欠けるので大きめに）

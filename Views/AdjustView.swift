@@ -20,27 +20,36 @@ struct AdjustView: View {
                     ProgressView().tint(.white)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 200, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
-            if !hasMask {
-                Text("最初のフレームでは人物の輪郭を取得できませんでした。書き出し時は追跡しながら取得し直します。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+            // 設定が増えてもプレビューが小さくなりすぎないよう、設定はスクロールできる枠に入れる
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if !hasMask {
+                        Text("このフレームでは人物の輪郭を取得できませんでした。書き出し時は追跡しながら取得し直します。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("ぼかしの強さ")
-                    Spacer()
-                    Text("\(Int((model.strength * 100).rounded()))")
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("ぼかしの強さ")
+                            Spacer()
+                            Text("\(Int((model.strength * 100).rounded()))")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: $model.strength, in: 0...1)
+                    }
+
+                    StylePicker(style: $model.style)
+
+                    StickerPicker(sticker: $model.sticker)
                 }
-                Slider(value: $model.strength, in: 0...1)
             }
-
-            StickerPicker(sticker: $model.sticker)
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: 320)
 
             Button {
                 model.path.append(.export)
@@ -61,10 +70,23 @@ struct AdjustView: View {
         .onChange(of: model.sticker) {
             scheduleRender(debounce: false)
         }
+        .onChange(of: model.style) {
+            scheduleRender(debounce: false)
+        }
     }
 
+    /// 最初の切り替え点のフレームでプレビューする
     private func prepare() async {
-        guard renderer == nil, let frame = model.source?.firstFrame, let faceRect = model.faceRect else { return }
+        guard renderer == nil, let source = model.source, let first = model.subjects.first else { return }
+        let frame: CGImage
+        if abs(first.time - source.timeRange.start.seconds) < Constants.subjectSwitchTolerance {
+            frame = source.firstFrame
+        } else if let loaded = try? await source.frame(at: first.time) {
+            frame = loaded
+        } else {
+            return
+        }
+        let faceRect = first.faceRect
         let created = await Task.detached(priority: .userInitiated) {
             PreviewRenderer(firstFrame: frame, faceRect: faceRect)
         }.value
@@ -78,14 +100,45 @@ struct AdjustView: View {
         renderTask?.cancel()
         let strength = model.strength
         let sticker = model.sticker
+        let style = model.style
         renderTask = Task {
             if debounce {
                 try? await Task.sleep(for: Constants.previewDebounce)
             }
             guard !Task.isCancelled, let renderer else { return }
-            let image = await renderer.render(strength: strength, sticker: sticker)
+            let image = await renderer.render(strength: strength, style: style, sticker: sticker)
             guard !Task.isCancelled else { return }
             preview = image
+        }
+    }
+}
+
+/// ぼかしのプリセットと、人から離れるほど強くするかを選ぶ
+private struct StylePicker: View {
+    @Binding var style: BlurStyle
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(BlurPreset.allCases) { preset in
+                        let isSelected = style.preset == preset
+                        Button {
+                            style.preset = preset
+                        } label: {
+                            Label(preset.label, systemImage: preset.systemImage)
+                                .font(.subheadline)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Capsule().fill(isSelected ? Color.accentColor : Color.secondary.opacity(0.12)))
+                                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(2)
+            }
+            Toggle("人から離れるほど強くぼかす", isOn: $style.isGradient)
         }
     }
 }

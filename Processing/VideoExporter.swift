@@ -7,8 +7,9 @@ import CoreImage
 /// HDR のトーンマッピングは行わないため、HDR 動画は元より色や明るさが変わることがある。
 final class VideoExporter: @unchecked Sendable {
     private let source: VideoSource
-    private let faceRect: CGRect
+    private let subjects: [SubjectKey]
     private let strength: Double
+    private let style: BlurStyle
     private let sticker: StickerSettings
     private let lock = NSLock()
     private var cancelled = false
@@ -18,10 +19,11 @@ final class VideoExporter: @unchecked Sendable {
     /// 総フレーム数の目安（進捗表示用）
     let estimatedFrameCount: Int
 
-    init(source: VideoSource, faceRect: CGRect, strength: Double, sticker: StickerSettings) {
+    init(source: VideoSource, subjects: [SubjectKey], strength: Double, style: BlurStyle, sticker: StickerSettings) {
         self.source = source
-        self.faceRect = faceRect
+        self.subjects = subjects
         self.strength = strength
+        self.style = style
         self.sticker = sticker
         estimatedFrameCount = max(1, Int((source.clipDuration * Double(source.nominalFrameRate)).rounded()))
     }
@@ -134,7 +136,7 @@ final class VideoExporter: @unchecked Sendable {
         let sessionEnd = source.timeRange.end
 
         let pipeline = FocusPipeline(bufferSize: source.naturalSize, orientation: source.orientation,
-                                     faceRect: faceRect, strength: CGFloat(strength), sticker: sticker)
+                                     subjects: subjects, strength: CGFloat(strength), style: style, sticker: sticker)
         let outputBounds = CGRect(x: 0, y: 0, width: width, height: height)
         let total = estimatedFrameCount
 

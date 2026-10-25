@@ -2,7 +2,6 @@ import SwiftUI
 
 enum AppError: LocalizedError {
     case loadFailed
-    case noFace
     case exportFailed
     case saveDenied
     case saveFailed
@@ -10,7 +9,6 @@ enum AppError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .loadFailed: return "動画を読み込めませんでした。"
-        case .noFace: return "顔が見つかりませんでした。"
         case .exportFailed: return "動画の書き出しに失敗しました。"
         case .saveDenied: return "写真ライブラリへの保存が許可されていません。"
         case .saveFailed: return "写真ライブラリに保存できませんでした。"
